@@ -46,6 +46,9 @@ DEATH
       my $shell = defined $1 ? $1 : shift @args;
       $opts{shelltype} = $shell;
     }
+    elsif ( $arg eq '--no-create' ) {
+      $opts{no_create} = 1;
+    }
     elsif ( $arg =~ /^--/ ) {
       die "Unknown import argument: $arg";
     }
@@ -89,6 +92,7 @@ sub bins { $_[0]->{bins}   ||= [ \'PATH' ] }
 sub roots { $_[0]->{roots} ||= [ \'PERL_LOCAL_LIB_ROOT' ] }
 sub extra { $_[0]->{extra} ||= {} }
 sub shelltype { $_[0]->{shelltype} ||= $_[0]->guess_shelltype }
+sub no_create { $_[0]->{no_create} }
 
 my $_archname = $Config{archname};
 my $_version  = $Config{version};
@@ -221,7 +225,8 @@ sub activate {
   my ($self, $path) = @_;
   $self = $self->new unless ref $self;
   $path = $self->resolve_path($path);
-  $self->ensure_dir_structure_for($path);
+  $self->ensure_dir_structure_for($path)
+    unless $self->no_create;
 
   my @active_lls = $self->active_paths;
 
@@ -803,6 +808,10 @@ search paths.
 Specify the shell type to use for output.  By default, the shell will be
 detected based on the environment.  Should be one of: C<bourne>, C<csh>,
 C<cmd>, or C<powershell>.
+
+=head2 --no-create
+
+Prevents C<local::lib> from creating directories when activating dirs.
 
 =head1 METHODS
 
