@@ -514,38 +514,73 @@ sub ensure_dir_structure_for {
 }
 
 sub guess_shelltype {
-  my $shellbin = 'sh';
-  if(defined $ENV{'SHELL'}) {
-      my @shell_bin_path_parts = File::Spec->splitpath($ENV{'SHELL'});
-      $shellbin = $shell_bin_path_parts[-1];
-  }
-  my $shelltype = do {
-      local $_ = $shellbin;
-      if(/csh/) {
-          'csh'
-      } else {
-          'bourne'
-      }
-  };
+  my $shellbin =
+    ( $^X eq 'MSWin32' && _win32_parent_process() )
+    || ($^X eq 'MSWin32' && defined $ENV{COMSPEC}
+        && (File::Spec->splitpath($ENV{COMSPEC}))[-1])
+    || (defined $ENV{SHELL}
+        && (File::Spec->splitpath($ENV{SHELL}))[-1])
+    || 'sh';
 
-  # Both Win32 and Cygwin have $ENV{COMSPEC} set.
-  if (defined $ENV{'COMSPEC'} && $^O ne 'cygwin') {
-      my @shell_bin_path_parts = File::Spec->splitpath($ENV{'COMSPEC'});
-      $shellbin = $shell_bin_path_parts[-1];
-         $shelltype = do {
-                 local $_ = $shellbin;
-                 if(/command\.com/) {
-                         'cmd'
-                 } elsif(/cmd\.exe/) {
-                         'cmd'
-                 } elsif(/4nt\.exe/) {
-                         'cmd'
-                 } else {
-                         $shelltype
-                 }
-         };
+  for ($shellbin) {
+    return
+        /csh/             ? 'csh'
+      : /command\.com/    ? 'cmd'
+      : /cmd\.exe/        ? 'cmd'
+      : /4nt\.exe/        ? 'cmd'
+      : /powershell\.exe/ ? 'powershell'
+                          : 'bourne';
   }
-  return $shelltype;
+}
+
+sub _win32_parent_process {
+  eval { require Win32; require Win32::API; }
+    and my $CreateToolhelp32Snapshot = Win32::API->new('kernel32', 'CreateToolhelp32Snapshot', 'NN', 'I')
+    and my $Process32First = Win32::API->new('kernel32', 'Process32First', 'IP', 'I')
+    and my $Process32Next = Win32::API->new('kernel32', 'Process32Next', 'IP', 'I')
+    and my $CloseHandle = Win32::API->new('kernel32', 'CloseHandle', 'I', 'V')
+    or return undef;
+
+  my $parent_pid;
+  my $parent_exe;
+  my %processes;
+  my $my_pid = Win32::GetCurrentProcessId();
+
+  my $snapshot = $CreateToolhelp32Snapshot->Call(2, 0)
+    or return undef;
+
+  my $pe32 = " " x (4*8+4+260);
+  for (
+    my $ret = $Process32First->Call($snapshot, $pe32);
+    $ret;
+    $ret = $Process32Next->Call($snapshot, $pe32)
+  ) {
+    my %process;
+    @process{qw(
+      pid
+      parent_pid
+      exe_file
+    )} = (unpack("LLLLLLLlLZ*", $pe32))[2,6,9];
+
+    if ($parent_pid) {
+      if ($process{pid} == $parent_pid) {
+        $parent_exe = $process{exe_file};
+        last;
+      }
+    }
+    elsif ($process{pid} == $my_pid) {
+      $parent_pid = $process{parent_pid};
+      if (my $parent = $processes{$parent_pid}) {
+        $parent_exe = $parent->{exe_file};
+        last;
+      }
+    }
+    else {
+      $processes{$process{pid}} = \%process;
+    }
+  }
+  $CloseHandle->Call($snapshot);
+  return $parent_exe;
 }
 
 =begin testing
