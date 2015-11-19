@@ -1,0 +1,28 @@
+version: {build}
+environment:
+  matrix:
+    - perl_version:
+    - perl_version: 5.12.3.1
+    - perl_version: 5.16.3.3
+    - perl_version: 5.20.2.1
+    - perl_version: cygwin
+install:
+  - 'if not "%perl_version%" == "cygwin" cinst -y StrawberryPerl --version %perl_version%'
+  - 'if not "%perl_version%" == "cygwin" path C:\Strawberry\perl\bin;C:\Strawberry\perl\site\bin;C:\Strawberry\c\bin;%PATH%'
+  - 'if "%perl_version%" == "cygwin" c:\cygwin\setup-x86.exe -q -P perl'
+  - 'if "%perl_version%" == "cygwin" path C:\cygwin\bin;%PATH%'
+  - 'perl -V'
+  - 'cpanm --self-upgrade'
+  - 'cpanm --installdeps --with-develop --with-suggests .'
+  - 'for /f "usebackq" %%d in (`perl -MConfig -e"print $Config{make}"`) do set make=%%d'
+
+
+# Use test_script instead
+build:
+  - 'perl Makefile.PL'
+  - '%make%'
+
+test_script:
+  - '%make% test'
+
+verbosity: minimal
